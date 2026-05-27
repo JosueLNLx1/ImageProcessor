@@ -1,12 +1,20 @@
 from pathlib import Path
 from rembg import remove
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont, ImageText
+from requests import get
+from dotenv import load_dotenv
+import os
+from io import BytesIO
+
+load_dotenv()
 
 class ImageProcessor:
     def __init__(self, input_folder: str, output_folder: str):
         self.input_folder = Path(input_folder)
         self.output_folder = Path(output_folder)
         self.temp_folder = Path("temp")
+        self.URL_PAGE = os.getenv("URL_PAGE")
+        print(f"URL_PAGE cargada: {self.URL_PAGE}")
         
         # Crear carpetas si no existed
         self.output_folder.mkdir(parents=True, exist_ok=True)
@@ -23,7 +31,10 @@ class ImageProcessor:
         self.canvas = None
         
         if self.output_folder.exists():
-            self.CleanOutput()
+            self.__CleanOutput()
+        if self.temp_folder.exists():
+            self.__CleanTemp()
+        
         
     def RemoveBG(self):
         Path(self.temp_folder / 'images').mkdir(parents=True, exist_ok=True)
@@ -89,10 +100,27 @@ class ImageProcessor:
                 except Exception as e:
                     print(f"✗ Error al pegar {image_path.name}: {e}")
     
-    def SourcePhotos(self):
-        return print("Función para agregar precio a la imagen (en desarrollo)")
+    def ImagesWithPrice(self):
+        try:
+            photos = self.__SourcePhotosURL()
+            print(f"✓ Fotos obtenidas desde la URL: {len(photos)} fotos encontradas.")
+            print("Fotos obtenidas:")
+            for photo in photos:
+                print(f"✓ Foto obtenida: {photo['image_url']}")
+                response = get(photo['image_url'])
+                imagen = Image.open(BytesIO(response.content))
+                new_image = self.addPriceToImage(imagen, photo['price'], photo['sku'])
+                new_image.show()
+                
+                break  # Solo mostrar la primera imagen por ahora
+                
+        except Exception as e:
+            print(f"✗ Error al obtener las fotos: {e}")
     
-    def CleanTemp(self):
+    def __SourcePhotosURL(self):
+        return get(self.URL_PAGE).json()
+    
+    def __CleanTemp(self):
         try:
             for item in self.temp_folder.iterdir():
                 if item.is_file():
@@ -105,7 +133,7 @@ class ImageProcessor:
         except Exception as e:
             print(f"✗ Error al limpiar la carpeta temporal: {e}")
     
-    def CleanOutput(self):
+    def __CleanOutput(self):
         try:
             for item in self.output_folder.iterdir():
                 if item.is_file():
@@ -113,3 +141,45 @@ class ImageProcessor:
             print("✓ Carpeta de salida limpiada.")
         except Exception as e:
             print(f"✗ Error al limpiar la carpeta de salida: {e}")
+    
+    def addPriceToImage(self, image, price, sku):
+        try:
+            font = ImageFont.truetype("Inter.ttf", 80)  # Texto más grande
+            image = image.convert("RGBA")
+            overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+            draw = ImageDraw.Draw(overlay)
+
+            padding = 20
+            radius = 15
+            margin = 50  # separación del borde de la imagen
+
+            # SKU - esquina superior izquierda
+            sku_bbox = draw.textbbox((0, 0), str(sku), font=font)
+            sku_text_w = sku_bbox[2] - sku_bbox[0]
+            sku_text_h = sku_bbox[3] - sku_bbox[1]
+            sku_rect_w = sku_text_w + padding * 2
+            sku_rect_h = sku_text_h + padding * 2
+            draw.rounded_rectangle([(margin, margin), (margin + sku_rect_w, margin + sku_rect_h)], radius=radius, fill=(128, 128, 128, 150))
+            sku_x = margin + (sku_rect_w - sku_text_w) // 2 - sku_bbox[0]
+            sku_y = margin + (sku_rect_h - sku_text_h) // 2 - sku_bbox[1]
+            draw.text((sku_x, sku_y), str(sku), font=font, fill="white")
+
+            # Precio - esquina inferior derecha
+            price_text = f"${price}"
+            price_bbox = draw.textbbox((0, 0), price_text, font=font)
+            price_text_w = price_bbox[2] - price_bbox[0]
+            price_text_h = price_bbox[3] - price_bbox[1]
+            price_rect_w = price_text_w + padding * 2
+            price_rect_h = price_text_h + padding * 2
+            img_w, img_h = image.size
+            rect_x0 = img_w - price_rect_w - margin
+            rect_y0 = img_h - price_rect_h - margin
+            draw.rounded_rectangle([(rect_x0, rect_y0), (rect_x0 + price_rect_w, rect_y0 + price_rect_h)], radius=radius, fill=(128, 128, 128, 150))
+            price_x = rect_x0 + (price_rect_w - price_text_w) // 2 - price_bbox[0]
+            price_y = rect_y0 + (price_rect_h - price_text_h) // 2 - price_bbox[1]
+            draw.text((price_x, price_y), price_text, font=font, fill="white")
+
+            return Image.alpha_composite(image, overlay)
+        except Exception as e:
+            print(f"✗ Error al agregar precio a la imagen: {e}")
+            return image

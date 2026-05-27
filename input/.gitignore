@@ -1,2 +1,5 @@
+# Ignorar todas las imágenes
 *
+
+# Pero mantener este archivo
 !.gitignore
