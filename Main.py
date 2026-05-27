@@ -6,6 +6,7 @@ def main():
     print("1. imágenes y convertir a WebP")
     print("2. Agregar precio a la imagen (en desarrollo)")
     print("3. Eliminar fondo de las imágenes")
+    print("4. Limpiar carpeta de entrada")
 
     opcion = input("Ingresa el número de la opción deseada: ")
     
@@ -16,8 +17,10 @@ def main():
         
     elif opcion == "3":
         RemoveBG()
+    elif opcion == "4":
+        cleanInput()
     else:
-        print("Opción no válida. Por favor, selecciona 1, 2 o 3.")
+        print("Opción no válida. Por favor, selecciona 1, 2, 3 o 4.")
 
 def ImageToWebP():
     images = ip.ImageProcessor("input", "output")
@@ -35,5 +38,19 @@ def ImageWithPrice():
 def RemoveBG():
     images = ip.ImageProcessor("input", "output")
     images.RemoveBG()
+
+def cleanInput():
+    try:
+        for item in ip.Path("input").iterdir():
+            if item == ip.Path(".gitignore"):
+                continue  # No eliminar el archivo .gitignore
+            if item.is_file():
+                item.unlink()
+            elif item.is_dir():
+                for subitem in item.iterdir():
+                    subitem.unlink()
+        print("✓ Carpeta de entrada limpiada.")
+    except Exception as e:
+        print(f"✗ Error al limpiar la carpeta de entrada: {e}")
 
 if __name__ == "__main__":    main()
