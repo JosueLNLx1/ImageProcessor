@@ -30,6 +30,8 @@ class ImageProcessor:
         self.canvas_size = (1000, 1000)
         self.canvas = None
         
+        self.logo_path = "images/HerGozLogo.png"  # Ruta del logo a agregar (si se desea)
+        
         if self.output_folder.exists():
             self.__CleanOutput()
         if self.temp_folder.exists():
@@ -109,10 +111,11 @@ class ImageProcessor:
                 print(f"✓ Foto obtenida: {photo['image_url']}")
                 response = get(photo['image_url'])
                 imagen = Image.open(BytesIO(response.content))
+                imagen.thumbnail((1000, 1000), Image.Resampling.LANCZOS)  # Redimensionar manteniendo proporción
                 new_image = self.addPriceToImage(imagen, photo['price'], photo['sku'])
-                new_image.show()
+                new_image = self.addLogoToImage(new_image)
+                new_image.save(self.output_folder / f"{photo['sku']}.webp", "WEBP", quality=95)
                 
-                break  # Solo mostrar la primera imagen por ahora
                 
         except Exception as e:
             print(f"✗ Error al obtener las fotos: {e}")
@@ -179,7 +182,54 @@ class ImageProcessor:
             price_y = rect_y0 + (price_rect_h - price_text_h) // 2 - price_bbox[1]
             draw.text((price_x, price_y), price_text, font=font, fill="white")
 
+            # "Mayoreo" - esquina inferior izquierda
+            mayoreo_text = "Mayoreo"
+            mayoreo_bbox = draw.textbbox((0, 0), mayoreo_text, font=font)
+            mayoreo_text_w = mayoreo_bbox[2] - mayoreo_bbox[0]
+            mayoreo_text_h = mayoreo_bbox[3] - mayoreo_bbox[1]
+            mayoreo_rect_w = mayoreo_text_w + padding * 2
+            mayoreo_rect_h = mayoreo_text_h + padding * 2
+            img_w, img_h = image.size
+            mayoreo_x0 = margin
+            mayoreo_y0 = img_h - mayoreo_rect_h - margin
+            draw.rounded_rectangle([(mayoreo_x0, mayoreo_y0), (mayoreo_x0 + mayoreo_rect_w, mayoreo_y0 + mayoreo_rect_h)], radius=radius, fill=(128, 128, 128, 150))
+            mayoreo_x = mayoreo_x0 + (mayoreo_rect_w - mayoreo_text_w) // 2 - mayoreo_bbox[0]
+            mayoreo_y = mayoreo_y0 + (mayoreo_rect_h - mayoreo_text_h) // 2 - mayoreo_bbox[1]
+            draw.text((mayoreo_x, mayoreo_y), mayoreo_text, font=font, fill="white")
+
             return Image.alpha_composite(image, overlay)
         except Exception as e:
             print(f"✗ Error al agregar precio a la imagen: {e}")
+            return image
+        
+    def addLogoToImage(self, image):
+        
+        try:
+            logo = self.logo_path
+            image = image.convert("RGBA")
+            logo = Image.open(logo).convert("RGBA")
+
+            # Redimensionar el logo al 15% del ancho de la imagen
+            img_w, img_h = image.size
+            logo_w = int(img_w * 0.30)
+            ratio = logo_w / logo.width
+            logo_h = int(logo.height * ratio)
+            logo = logo.resize((logo_w, logo_h), Image.Resampling.LANCZOS)
+
+            # Reducir opacidad del logo (80 de 255 = ~30% de visibilidad)
+            r, g, b, a = logo.split()
+            a = a.point(lambda x: int(x * 1))
+            logo = Image.merge("RGBA", (r, g, b, a))
+
+            # Posición: esquina superior derecha con margen
+            margin = 30
+            x = img_w - logo_w - margin
+            y = margin
+
+            overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+            overlay.paste(logo, (x, y), logo)
+
+            return Image.alpha_composite(image, overlay)
+        except Exception as e:
+            print(f"✗ Error al agregar el logo a la imagen: {e}")
             return image
